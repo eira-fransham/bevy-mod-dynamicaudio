@@ -1,6 +1,6 @@
 use audio::{
-    audio_output_available, create_mixers, play_queued_audio_system, update_emitter_positions,
-    update_listener_positions, AudioOutput,
+    create_mixers, play_queued_audio_system, 
+    update_listener_positions, cleanup_finished_audio,
 };
 use bevy::{
     audio::{AudioLoader, DefaultSpatialScale, PlaybackMode, SpatialScale, Volume},
@@ -12,8 +12,9 @@ use fundsp::audionode::AudioNode;
 use rodio::Sample;
 
 pub mod audio;
-pub mod queue;
 pub mod sink;
+
+pub use audio::*;
 
 /// Set for the audio playback systems, so they can share a run condition
 #[derive(SystemSet, Debug, Default, Clone, Copy, PartialEq, Eq, Hash)]
@@ -79,8 +80,7 @@ impl AddAudioSource for App {
     {
         self.init_asset::<T>().add_systems(
             PostUpdate,
-            // (play_queued_audio_system::<T>, cleanup_finished_audio::<T>).in_set(AudioPlaySet),
-            play_queued_audio_system::<T>.in_set(AudioPlaySet),
+            (play_queued_audio_system::<T>, cleanup_finished_audio::<T>).in_set(AudioPlaySet),
         );
         self
     }

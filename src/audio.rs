@@ -501,6 +501,51 @@ pub fn update_emitter_positions(
     }
 }
 
+pub(crate) fn cleanup_finished_audio<T: Decodable + Asset>(
+    mut commands: Commands,
+    query_nonspatial_despawn: Query<
+        (Entity, &AudioSink),
+        (With<PlaybackDespawnMarker>, With<Handle<T>>),
+    >,
+    query_spatial_despawn: Query<
+        (Entity, &SpatialAudioSink),
+        (With<PlaybackDespawnMarker>, With<Handle<T>>),
+    >,
+    query_nonspatial_remove: Query<
+        (Entity, &AudioSink),
+        (With<PlaybackRemoveMarker>, With<Handle<T>>),
+    >,
+    query_spatial_remove: Query<
+        (Entity, &SpatialAudioSink),
+        (With<PlaybackRemoveMarker>, With<Handle<T>>),
+    >,
+) {
+    for (entity, sink) in &query_nonspatial_despawn {
+        if sink.sink.empty() {
+            commands.entity(entity).despawn();
+        }
+    }
+    for (entity, sink) in &query_spatial_despawn {
+        if sink.sink.empty() {
+            commands.entity(entity).despawn();
+        }
+    }
+    for (entity, sink) in &query_nonspatial_remove {
+        if sink.sink.empty() {
+            commands
+                .entity(entity)
+                .remove::<(AudioSourceBundle<T>, AudioSink, PlaybackRemoveMarker)>();
+        }
+    }
+    for (entity, sink) in &query_spatial_remove {
+        if sink.sink.empty() {
+            commands
+                .entity(entity)
+                .remove::<(AudioSourceBundle<T>, SpatialAudioSink, PlaybackRemoveMarker)>();
+        }
+    }
+}
+
 /// Updates spatial audio sink ear positions when spatial listeners change.
 pub(crate) fn update_listener_positions(
     mut emitters: Query<(&SpatialAudioSink, &PlaybackSettings)>,
