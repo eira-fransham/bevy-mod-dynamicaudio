@@ -7,4 +7,4 @@ solution would be to have a custom API that just requires that a type can be bui
 plus some settings. This basic pattern of having a trait for creating types with an associated type for
 settings is common in Bevy.
 
-### TODO: Show video example
+[![Video example](http://img.youtube.com/vi/zwR3eM_MZSM/0.jpg)](http://www.youtube.com/watch?v=zwR3eM_MZSM "bevy-mod-dynamicaudio example")

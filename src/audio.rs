@@ -76,7 +76,11 @@ where
             }
         }
 
-        self.node.process(fundsp::MAX_BUFFER_SIZE, self.buffer_in.self_ref(), self.buffer_out.self_mut());
+        self.node.process(
+            fundsp::MAX_BUFFER_SIZE,
+            self.buffer_in.self_ref(),
+            self.buffer_out.self_mut(),
+        );
     }
 }
 
