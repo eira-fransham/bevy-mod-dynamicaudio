@@ -1,12 +1,13 @@
 use std::sync::Arc;
 
-use crate::sink::{Sink, SpatialSink};
+use crate::sink::SpatialSink;
 use bevy::{
     audio::{DefaultSpatialScale, PlaybackMode},
     ecs::system::SystemParam,
     prelude::*,
 };
 use fundsp::prelude::*;
+use rodio::Sink;
 
 use rodio::{
     dynamic_mixer::{self, DynamicMixerController},
@@ -148,24 +149,16 @@ pub struct MixerController {
 }
 
 #[derive(Component)]
-pub struct SpatialAudioSink<S = Box<dyn Source<Item = f32> + Send + Sync + 'static>>
-where
-    S: Source,
-    S::Item: Sample,
-{
-    sink: SpatialSink<S>,
+pub struct SpatialAudioSink {
+    sink: SpatialSink,
 }
 
 #[derive(Component)]
-pub struct AudioSink<S = Box<dyn Source<Item = f32> + Send + Sync + 'static>> {
-    sink: Sink<S>,
+pub struct AudioSink {
+    sink: Sink,
 }
 
-impl<S> SpatialAudioSink<S>
-where
-    S: Source,
-    S::Item: Sample,
-{
+impl SpatialAudioSink {
     /// Set the two ears position.
     pub fn set_ears_position(&self, left_position: Vec3, right_position: Vec3) {
         self.sink.set_left_ear_position(left_position.to_array());
@@ -186,11 +179,7 @@ where
     }
 }
 
-impl<S> AudioSinkPlayback for SpatialAudioSink<S>
-where
-    S: Source,
-    S::Item: Sample,
-{
+impl AudioSinkPlayback for SpatialAudioSink {
     fn volume(&self) -> f32 {
         self.sink.volume()
     }
@@ -224,16 +213,11 @@ where
     }
 
     fn empty(&self) -> bool {
-        // TODO: Reimplement
-        false
+        self.sink.empty()
     }
 }
 
-impl<S> AudioSinkPlayback for AudioSink<S>
-where
-    S: Source,
-    S::Item: Sample,
-{
+impl AudioSinkPlayback for AudioSink {
     fn volume(&self) -> f32 {
         self.sink.volume()
     }
@@ -267,8 +251,7 @@ where
     }
 
     fn empty(&self) -> bool {
-        // TODO: Reimplement
-        false
+        self.sink.empty()
     }
 }
 
@@ -406,18 +389,15 @@ pub(crate) fn play_queued_audio_system<Src: Asset + Decodable>(
         let mut commands = commands.entity(entity);
 
         let source = match settings.mode {
-            PlaybackMode::Loop => {
-                Box::new(audio_source.decoder().repeat_infinite().convert_samples())
-                    as Box<dyn Source<Item = f32> + Send + Sync + 'static>
-            }
-            PlaybackMode::Once => Box::new(audio_source.decoder().convert_samples()),
+            PlaybackMode::Loop => Err(audio_source.decoder().repeat_infinite()),
+            PlaybackMode::Once => Ok(audio_source.decoder()),
             PlaybackMode::Despawn => {
                 commands.insert(PlaybackDespawnMarker);
-                Box::new(audio_source.decoder().convert_samples())
+                Ok(audio_source.decoder())
             }
             PlaybackMode::Remove => {
                 commands.insert(PlaybackRemoveMarker);
-                Box::new(audio_source.decoder().convert_samples())
+                Ok(audio_source.decoder())
             }
         };
 
@@ -447,8 +427,12 @@ pub(crate) fn play_queued_audio_system<Src: Asset + Decodable>(
                 emitter_translation,
                 (left_ear * scale).into(),
                 (right_ear * scale).into(),
-                source,
             );
+
+            match source {
+                Ok(src) => sink.append(src),
+                Err(src) => sink.append(src),
+            }
 
             sink.set_speed(settings.speed);
             sink.set_volume(settings.volume.get() * global_volume.volume.get());
@@ -468,7 +452,12 @@ pub(crate) fn play_queued_audio_system<Src: Asset + Decodable>(
                 }
             }
         } else {
-            let (sink, output) = Sink::new_idle(source);
+            let (sink, output) = Sink::new_idle();
+
+            match source {
+                Ok(src) => sink.append(src),
+                Err(src) => sink.append(src),
+            }
 
             sink.set_speed(settings.speed);
             sink.set_volume(settings.volume.get() * global_volume.volume.get());
