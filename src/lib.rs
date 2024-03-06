@@ -1,9 +1,9 @@
 use audio::{
     audio_output_available, create_mixers, play_queued_audio_system, update_emitter_positions,
-    update_listener_positions, AudioOutput, 
+    update_listener_positions, AudioOutput,
 };
 use bevy::{
-    audio::{DefaultSpatialScale, PlaybackMode, SpatialScale, Volume, AudioLoader},
+    audio::{AudioLoader, DefaultSpatialScale, PlaybackMode, SpatialScale, Volume},
     ecs::schedule::SystemSet,
     prelude::*,
     transform::TransformSystem,

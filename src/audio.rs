@@ -28,62 +28,55 @@ where
 {
     source: S,
     node: Node,
-    buffer: Buffer<Node::Sample>,
+    buffer_in: Buffer<Node::Sample>,
+    buffer_out: Buffer<Node::Sample>,
     buffer_idx: usize,
     buffer_channel: usize,
 }
-
-const BUFFER_SIZE: usize = 512;
 
 impl<S, N> AudioProcessorSource<S, N>
 where
     S: Source<Item = N::Sample>,
     N: AudioNode,
-    N::Sample: Default + Clone + rodio::Sample,
+    N::Sample: Default + Clone + rodio::Sample + 'static,
 {
     fn new(source: S, node: N) -> Self {
-        let mut buffer = Buffer::<N::Sample>::with_channels(source.channels() as usize);
+        let mut buffer_in = Buffer::<N::Sample>::with_channels(source.channels() as usize);
 
-        for buf in buffer.vec_mut() {
-            *buf = vec![Default::default(); BUFFER_SIZE];
+        for buf in buffer_in.vec_mut() {
+            *buf = vec![Default::default(); fundsp::MAX_BUFFER_SIZE];
         }
 
-        Self {
+        let mut buffer_out = Buffer::<N::Sample>::with_channels(source.channels() as usize);
+
+        for buf in buffer_out.vec_mut() {
+            *buf = vec![Default::default(); fundsp::MAX_BUFFER_SIZE];
+        }
+
+        let mut out = Self {
             source,
             node,
-            buffer,
+            buffer_in,
+            buffer_out,
             buffer_idx: 0,
             buffer_channel: 0,
-        }
+        };
+
+        out.fill_buf();
+
+        out
     }
 
     fn fill_buf(&mut self) {
         let chans = self.channels();
-        let buf = self.buffer.self_mut();
-
-        for i in 0..buf[0].len() {
+        let buf = self.buffer_in.self_mut();
+        for i in 0..fundsp::MAX_BUFFER_SIZE {
             for chan in 0..chans {
-                let Some(sample) = self.source.next() else {
-                    return;
-                };
-
-                buf[chan as usize][i] = sample;
+                buf[chan as usize][i] = self.source.next().unwrap_or_default();
             }
-
-            let mut frame = Frame::<N::Sample, N::Inputs>::default();
-
-            for chan in 0..chans {
-                frame[chan as usize] = buf[chan as usize][i];
-            }
-
-            let frame = self.node.tick(&frame);
-
-            for chan in 0..chans {
-                buf[chan as usize][i] = frame[chan as usize] ;
-            }
-
         }
 
+        self.node.process(fundsp::MAX_BUFFER_SIZE, self.buffer_in.self_ref(), self.buffer_out.self_mut());
     }
 }
 
@@ -91,12 +84,12 @@ impl<S, N> Iterator for AudioProcessorSource<S, N>
 where
     S: Source<Item = N::Sample>,
     N: AudioNode,
-    N::Sample: rodio::Sample,
+    N::Sample: rodio::Sample + 'static,
 {
     type Item = N::Sample;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if let Some(sample) = self.buffer.at(self.buffer_channel).get(self.buffer_idx) {
+        if let Some(sample) = self.buffer_out.at(self.buffer_channel).get(self.buffer_idx) {
             self.buffer_channel += 1;
             if self.buffer_channel >= self.channels() as usize {
                 self.buffer_idx += 1;
@@ -119,14 +112,14 @@ impl<S, N> Source for AudioProcessorSource<S, N>
 where
     S: Source<Item = N::Sample>,
     N: AudioNode,
-    N::Sample: rodio::Sample,
+    N::Sample: rodio::Sample + 'static,
 {
     fn current_frame_len(&self) -> Option<usize> {
-        Some(self.buffer.at(0).len() - self.buffer_idx)
+        Some(fundsp::MAX_BUFFER_SIZE)
     }
 
     fn channels(&self) -> u16 {
-        self.buffer.channels() as _
+        self.source.channels() as _
     }
 
     fn sample_rate(&self) -> u32 {
