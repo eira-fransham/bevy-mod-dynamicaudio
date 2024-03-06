@@ -8,6 +8,8 @@ use rodio::source::Spatial;
 use rodio::{queue, OutputStreamHandle, PlayError};
 use rodio::{Sample, Sink, Source};
 
+/// We need to reimplement this because `rodio` doesn't have a `SpatialSink::new_idle` method. This appears to
+/// just be an error, because `Sink` has one and it's trivial to implement.
 pub struct SpatialSink {
     sink: Sink,
     positions: Arc<Mutex<SoundPositions>>,
@@ -19,6 +21,8 @@ struct SoundPositions {
     right_ear: [f32; 3],
 }
 
+// We don't use all the functions from `SpatialSink`, but we allow dead code to
+#[allow(dead_code)]
 impl SpatialSink {
     /// Builds a new `SpatialSink`.
     pub fn try_new(

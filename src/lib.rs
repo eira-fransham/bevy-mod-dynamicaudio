@@ -1,6 +1,5 @@
 use audio::{
-    create_mixers, play_queued_audio_system, 
-    update_listener_positions, cleanup_finished_audio,
+    cleanup_finished_audio, create_mixers, play_queued_audio_system, update_listener_positions,
 };
 use bevy::{
     audio::{AudioLoader, DefaultSpatialScale, PlaybackMode, SpatialScale, Volume},
@@ -12,7 +11,7 @@ use fundsp::audionode::AudioNode;
 use rodio::Sample;
 
 pub mod audio;
-pub mod sink;
+mod sink;
 
 pub use audio::*;
 
