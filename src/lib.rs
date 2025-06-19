@@ -8,7 +8,6 @@ use bevy::{
     transform::TransformSystem,
 };
 use fundsp::audionode::AudioNode;
-use rodio::Sample;
 
 pub mod audio;
 mod sink;
@@ -88,17 +87,13 @@ impl AddAudioSource for App {
 pub trait AddAudioMixer {
     fn add_audio_mixer<Node>(&mut self) -> &mut Self
     where
-        f32: cpal::FromSample<Node::Sample>,
-        Node: AudioNode + Send + Sync + 'static,
-        Node::Sample: Sample + cpal::FromSample<f32> + Send + Sync + 'static;
+        Node: AudioNode + Send + Sync + 'static;
 }
 
 impl AddAudioMixer for App {
     fn add_audio_mixer<Node>(&mut self) -> &mut Self
     where
-        f32: cpal::FromSample<Node::Sample>,
         Node: AudioNode + Send + Sync + 'static,
-        Node::Sample: Sample + cpal::FromSample<f32> + Send + Sync + 'static,
     {
         self.add_systems(PostUpdate, create_mixers::<Node>.in_set(AudioPlaySet));
         self

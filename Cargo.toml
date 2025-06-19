@@ -6,9 +6,9 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-rodio = "0.18"
-bevy = "0.14"
+rodio = "0.19"
+bevy = "0.15"
 cpal = "0.15"
-fundsp = "0.16"
+fundsp = "0.20"
 generic-array = "0.14"
 parking_lot = "0.12"

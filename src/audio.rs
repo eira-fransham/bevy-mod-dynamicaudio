@@ -11,7 +11,7 @@ use rodio::Sink;
 
 use rodio::{
     dynamic_mixer::{self, DynamicMixerController},
-    OutputStream, OutputStreamHandle, Sample, Source,
+    OutputStream, OutputStreamHandle, Source,
 };
 
 /// Set the target for an [`AudioSource`][crate::AudioSource]. Audio produced by this source will be rerouted
@@ -24,35 +24,24 @@ pub struct AudioTarget {
 
 #[derive(Component)]
 pub struct AudioProcessorSource<S, Node>
-where
-    Node: AudioNode,
 {
     source: S,
     node: Node,
-    buffer_in: Buffer<Node::Sample>,
-    buffer_out: Buffer<Node::Sample>,
+    buffer_in: BufferArray<generic_array::typenum::U2>,
+    buffer_out: BufferArray<generic_array::typenum::U2>,
     buffer_idx: usize,
     buffer_channel: usize,
 }
 
 impl<S, N> AudioProcessorSource<S, N>
 where
-    S: Source<Item = N::Sample>,
+    S: Source<Item = f32>,
     N: AudioNode,
-    N::Sample: Default + Clone + rodio::Sample + 'static,
 {
     fn new(source: S, node: N) -> Self {
-        let mut buffer_in = Buffer::<N::Sample>::with_channels(source.channels() as usize);
-
-        for buf in buffer_in.vec_mut() {
-            *buf = vec![Default::default(); fundsp::MAX_BUFFER_SIZE];
-        }
-
-        let mut buffer_out = Buffer::<N::Sample>::with_channels(source.channels() as usize);
-
-        for buf in buffer_out.vec_mut() {
-            *buf = vec![Default::default(); fundsp::MAX_BUFFER_SIZE];
-        }
+        assert_eq!(source.channels(), 2);
+        let buffer_in = BufferArray::new();
+        let buffer_out = BufferArray::new();
 
         let mut out = Self {
             source,
@@ -70,33 +59,32 @@ where
 
     fn fill_buf(&mut self) {
         let chans = self.channels();
-        let buf = self.buffer_in.self_mut();
         for i in 0..fundsp::MAX_BUFFER_SIZE {
             for chan in 0..chans {
-                buf[chan as usize][i] = self.source.next().unwrap_or_default();
+                self.buffer_in.set_f32(chan as usize, i, self.source.next().unwrap_or_default());
             }
         }
 
         self.node.process(
             fundsp::MAX_BUFFER_SIZE,
-            self.buffer_in.self_ref(),
-            self.buffer_out.self_mut(),
+            &self.buffer_in.buffer_ref(),
+            &mut self.buffer_out.buffer_mut(),
         );
     }
 }
 
 impl<S, N> Iterator for AudioProcessorSource<S, N>
 where
-    S: Source<Item = N::Sample>,
+    S: Source<Item = f32>,
     N: AudioNode,
-    N::Sample: rodio::Sample + 'static,
 {
-    type Item = N::Sample;
+    type Item = f32;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if let Some(sample) = self.buffer_out.at(self.buffer_channel).get(self.buffer_idx) {
+        let channels =self.channels() as usize;
+        if let Some(sample) = self.buffer_out.channel_f32_mut(self.buffer_channel).get_mut(self.buffer_idx) {
             self.buffer_channel += 1;
-            if self.buffer_channel >= self.channels() as usize {
+            if self.buffer_channel >= channels {
                 self.buffer_idx += 1;
                 self.buffer_channel = 0;
             }
@@ -115,9 +103,8 @@ where
 
 impl<S, N> Source for AudioProcessorSource<S, N>
 where
-    S: Source<Item = N::Sample>,
+    S: Source<Item = f32>,
     N: AudioNode,
-    N::Sample: rodio::Sample + 'static,
 {
     fn current_frame_len(&self) -> Option<usize> {
         Some(fundsp::MAX_BUFFER_SIZE)
@@ -353,7 +340,7 @@ pub(crate) fn play_queued_audio_system<Src: Asset + Decodable>(
     mut query_nonplaying: Query<
         (
             Entity,
-            &Handle<Src>,
+            &AudioPlayer<Src>,
             Option<&AudioTarget>,
             &PlaybackSettings,
             Option<&GlobalTransform>,
@@ -375,8 +362,8 @@ pub(crate) fn play_queued_audio_system<Src: Asset + Decodable>(
     for (entity, source_handle, target, settings, maybe_emitter_transform) in
         query_nonplaying.iter_mut()
     {
-        let Some(audio_source) = audio_sources.get(source_handle) else {
-            warn!("Could not find audio source: {:?}", source_handle);
+        let Some(audio_source) = audio_sources.get(source_handle.0.id()) else {
+            warn!("Could not find audio source: {:?}", source_handle.0);
             continue;
         };
 
@@ -505,19 +492,19 @@ pub(crate) fn cleanup_finished_audio<T: Decodable + Asset>(
     mut commands: Commands,
     query_nonspatial_despawn: Query<
         (Entity, &AudioSink),
-        (With<PlaybackDespawnMarker>, With<Handle<T>>),
+        (With<PlaybackDespawnMarker>, With<AudioPlayer<T>>),
     >,
     query_spatial_despawn: Query<
         (Entity, &SpatialAudioSink),
-        (With<PlaybackDespawnMarker>, With<Handle<T>>),
+        (With<PlaybackDespawnMarker>, With<AudioPlayer<T>>),
     >,
     query_nonspatial_remove: Query<
         (Entity, &AudioSink),
-        (With<PlaybackRemoveMarker>, With<Handle<T>>),
+        (With<PlaybackRemoveMarker>, With<AudioPlayer<T>>),
     >,
     query_spatial_remove: Query<
         (Entity, &SpatialAudioSink),
-        (With<PlaybackRemoveMarker>, With<Handle<T>>),
+        (With<PlaybackRemoveMarker>, With<AudioPlayer<T>>),
     >,
 ) {
     for (entity, sink) in &query_nonspatial_despawn {
@@ -585,9 +572,7 @@ pub(crate) fn create_mixers<Node>(
     query_mixers: Query<&MixerController>,
     mut commands: Commands,
 ) where
-    f32: cpal::FromSample<Node::Sample>,
     Node: AudioNode + Send + Sync + 'static,
-    Node::Sample: Sample + cpal::FromSample<f32> + Send + Sync + 'static,
 {
     let Some(global_stream_handle) = audio_output.stream_handle.as_ref() else {
         return;
